@@ -3060,8 +3060,10 @@ net.brehaut.ClojureTools = (function (SH) {
         el)
     el))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(def reddit-base &quot;http://reddit.com&quot;)</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(def ^:private lrqtime (atom 0))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn- rlimit [minwait timeatom]
+</td><td class="codes"><pre class="brush: clojure">(def ^:private lrqtime (atom 0))</pre></td></tr><tr><td class="docs"><p>If <code>minwait</code> milliseconds have not passed since the timestamp in <code>timeatom</code>, sleep
+  for the difference. Always update timeatom with the current timestamp.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn- rlimit
+  [minwait timeatom]
   (let [oldtime @timeatom
         now (System/currentTimeMillis)
         diff (- now oldtime)]
@@ -3089,7 +3091,7 @@ net.brehaut.ClojureTools = (function (SH) {
     (lazy-cat listing
               (if (nil? after) []
                   (listing-seq path (request-xf path {:query-params {:after after :limit 100}}))))))</pre></td></tr><tr><td class="docs"><p>A lazy sequence of all the items that would be on the listing page at path.
-  (take 50 (listing "r/gaming"))</p>
+  <code>(take 50 (listing "r/gaming"))</code></p>
 </td><td class="codes"><pre class="brush: clojure">(defn listing
   [path]
   (listing-seq path (request-xf path {:query-params {:limit 100}})))</pre></td></tr><tr><td class="docs">

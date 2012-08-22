@@ -24,7 +24,10 @@
 
 (def ^:private lrqtime (atom 0))
 
-(defn- rlimit [minwait timeatom]
+(defn- rlimit
+  "If `minwait` milliseconds have not passed since the timestamp in `timeatom`, sleep
+  for the difference. Always update timeatom with the current timestamp."
+  [minwait timeatom]
   (let [oldtime @timeatom
         now (System/currentTimeMillis)
         diff (- now oldtime)]
@@ -60,7 +63,7 @@
 
 (defn listing
   "A lazy sequence of all the items that would be on the listing page at path.
-  (take 50 (listing \"r/gaming\"))"
+  `(take 50 (listing \"r/gaming\"))`"
   [path]
   (listing-seq path (request-xf path {:query-params {:limit 100}})))
 
