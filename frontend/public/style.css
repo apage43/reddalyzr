@@ -1,0 +1,137 @@
+html, body {
+    background: #fff;
+    color: #000;
+}
+
+a {
+    color: #000;
+}
+
+.selected {
+    background: #000;
+    color: #fff;
+    border-radius: 3px;
+}
+
+#content {
+    width: 900px;
+    margin-left: 50px;
+    position: relative;
+}
+
+#datapts {
+    margin-top: 4px;
+    float: right;
+}
+
+header {
+    text-align: left;
+    margin-bottom: 10px;
+}
+
+h1 {
+    margin-bottom: 5px;
+}
+
+#chart {
+    width: 900px;
+    height: 420px;
+    overflow: hidden;
+}
+
+#rname {
+    display: none;
+    float: right;
+    font-size: 20px;
+    position: absolute;
+    top: 10px;
+    right: 0px;
+}
+
+#reddits {
+    width: 250px;
+    height: 100%;
+    overflow: scroll;
+    overflow-x: hidden;
+    float: right;
+    position: absolute;
+    top: 0px;
+    right: 0px;
+}
+
+#reddits li {
+    list-style-type: none;
+    text-indent: none;
+}
+
+#reddits a {
+    text-decoration: underline;
+    font-weight: bold;
+}
+
+a:hover {
+    cursor: pointer;
+}
+
+#reddits ul {
+    padding-left: 0;
+    text-indent: none;
+}
+
+#chart rect {
+    fill: #000;
+}
+
+#tzctl {
+    float: right;
+    font-size: 20px;
+    position: absolute;
+    top: 10px;
+    right: 0px;
+    clear: none;
+}
+
+#tzctl a {
+    border-radius: 10px;
+    padding: 3px 6px 3px 6px;
+    border: 2px solid #000
+}
+
+@media (max-width: 990px) {
+    #reddits {
+        display: none;
+    }
+    #rname {
+        display: block;
+        top: 2.7em;
+    }
+    #content {
+        margin: 0 auto;
+    }
+}
+
+@media (max-width: 640px) {
+    #tzctl {
+        display: none;
+    }
+    #rname {
+        top: 10px;
+        display: block;
+    }
+}
+
+@media print {
+    @page {size: landscape}
+
+    #reddits {
+        display: none;
+    }
+    #rname {
+        top: 10px;
+        display: block;
+    }
+    #tzctl {
+        display: none;
+    }
+}
+
