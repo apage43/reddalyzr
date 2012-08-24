@@ -3029,19 +3029,115 @@ net.brehaut.ClojureTools = (function (SH) {
   };
 })(SyntaxHighlighter);
 </script><title>reddalyzr -- Marginalia</title></head><body><table><tr><td class="docs"><div class="header"><h1 class="project-name">reddalyzr</h1><h2 class="project-version">0.1.0-SNAPSHOT</h2><br /><p>reddit stuff for clojure</p>
-</div><div class="dependencies"><h3>dependencies</h3><table><tr><td class="dep-name">org.clojure/clojure</td><td class="dotted"><hr /></td><td class="dep-version">1.4.0</td></tr><tr><td class="dep-name">clojurewerkz/spyglass</td><td class="dotted"><hr /></td><td class="dep-version">1.0.0</td></tr><tr><td class="dep-name">clj-http</td><td class="dotted"><hr /></td><td class="dep-version">0.5.3</td></tr></table></div></td><td class="codes" style="text-align: center; vertical-align: middle;color: #666;padding-right:20px"><br /><br /><br />(this space intentionally left almost blank)</td></tr><tr><td class="docs"><div class="toc"><a name="toc"><h3>namespaces</h3></a><ul><li><a href="#loader">loader</a></li><li><a href="#reddit">reddit</a></li></ul></div></td><td class="codes">&nbsp;</td></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#loader" name="loader"><h1 class="project-name">loader</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(ns loader
+</div><div class="dependencies"><h3>dependencies</h3><table><tr><td class="dep-name">org.clojure/clojure</td><td class="dotted"><hr /></td><td class="dep-version">1.4.0</td></tr><tr><td class="dep-name">clojurewerkz/spyglass</td><td class="dotted"><hr /></td><td class="dep-version">1.0.0</td></tr><tr><td class="dep-name">com.taoensso/timbre</td><td class="dotted"><hr /></td><td class="dep-version">0.8.0</td></tr><tr><td class="dep-name">org.clojure/tools.nrepl</td><td class="dotted"><hr /></td><td class="dep-version">0.2.0-beta9</td></tr><tr><td class="dep-name">cheshire</td><td class="dotted"><hr /></td><td class="dep-version">4.0.1</td></tr><tr><td class="dep-name">overtone/at-at</td><td class="dotted"><hr /></td><td class="dep-version">1.0.0</td></tr><tr><td class="dep-name">clj-http</td><td class="dotted"><hr /></td><td class="dep-version">0.5.3</td></tr></table></div></td><td class="codes" style="text-align: center; vertical-align: middle;color: #666;padding-right:20px"><br /><br /><br />(this space intentionally left almost blank)</td></tr><tr><td class="docs"><div class="toc"><a name="toc"><h3>namespaces</h3></a><ul><li><a href="#reddalyzr.grabulator">reddalyzr.grabulator</a></li><li><a href="#reddalyzr.loader">reddalyzr.loader</a></li><li><a href="#reddalyzr.reddit">reddalyzr.reddit</a></li><li><a href="#startup">startup</a></li></ul></div></td><td class="codes">&nbsp;</td></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#reddalyzr.grabulator" name="reddalyzr.grabulator"><h1 class="project-name">reddalyzr.grabulator</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(ns reddalyzr.grabulator
+  (:use [overtone.at-at :only (at now)])
+  (:require [reddalyzr.reddit :as reddit]
+            [reddalyzr.loader :as loader]
+            [overtone.at-at :as at-]
+            [taoensso.timbre :as log]
+            [cheshire.core :as json]
+            [clojurewerkz.spyglass.client :as cb]
+            [clj-http.client :as http]))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(def aapool (at-/mk-pool))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(def cb-rest-addr (get (System/getenv) &quot;COUCHBASE_REST&quot; &quot;http://127.0.0.1:9500/default/_design/reddit/&quot;))
+(def cb-mc-addr (get (System/getenv) &quot;COUCHBASE_MEMCACHED&quot; &quot;127.0.0.1:12001&quot;))
+(def statekey &quot;reddalyzr_grabulator_state&quot;)</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(def grabulator-config (atom {}))
+(def persisted-state (agent {}))
+(def initial-state {:kind :configuration
+                    :scheduled-tasks {}
+                    ;; Grab 300 most recent items every minute
+                    :periodic {:all-new [60 &quot;grab&quot; [&quot;r/all/new/&quot; 300 {:query-params {:sort &quot;new&quot;}}]]}})</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn persist-state [_key _atom oldval newval]
+  (when (not= oldval newval) (cb/set (:cb-conn @grabulator-config) statekey 0 (json/encode newval))))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn grab-task [path limit &amp; [opts]]
+  (log/info &quot;Loading from path&quot; (str &quot;\ path &quot;\) &quot;limit&quot; limit opts)
+  (loader/load-reddit (:cb-conn @grabulator-config) path limit opts))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(def tasks
+  {:grab grab-task})</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn r-munge [path] (.replace path \/ \_))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn drop-task [pstate tk]
+  (log/info &quot;Task&quot; tk &quot;completed&quot;)
+  (update-in pstate [:scheduled-tasks] dissoc tk))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn prepare-to-fire [pstate]
+  (let [mysid (:sid @grabulator-config)]
+    (reduce (fn [s [tk t]]
+              (if (not= mysid (:sid t))
+                (do (at (:time t) #(do (apply (tasks (keyword (:type t))) (:parm t))
+                                       (send persisted-state drop-task tk))
+                        aapool)
+                    (log/info &quot;Scheduled task&quot; tk &quot;to fire at&quot; (:time t))
+                    (assoc-in s [:scheduled-tasks tk :sid] mysid))
+                s)) pstate (:scheduled-tasks pstate))))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn sched-task [pstate id [time type parm]]
+  (let [prex ((:scheduled-tasks pstate) id)
+        ntime (+ (* 1000 time) (now))]
+    (send persisted-state prepare-to-fire)
+    (if (nil? prex)
+      (assoc-in pstate [:scheduled-tasks id] {:time ntime :type type :parm parm})
+      pstate)))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn grab-path [rdt &amp; [limit opts]]
+  (send persisted-state sched-task
+        (keyword (str &quot;fetch-&quot; (r-munge rdt)))
+        [0 &quot;grab&quot; [(str rdt) (or limit 10000) opts]]))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn sched-periodic-grab [path period &amp; [limit opts]]
+  (send persisted-state assoc-in [:periodic (keyword (str &quot;fetch-&quot; (r-munge path)))]
+        [period &quot;grab&quot; [path (or limit 500) opts]]))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn heartbeat [pstate]
+  (log/debug &quot;Grabulator heartbeat.&quot;)
+  ;; Reschedule repeating tasks
+  (doseq [[tk tv] (:periodic pstate)] (send persisted-state sched-task tk tv))
+  ;; Schedule next heartbeat
+  (when (:heartbeat @grabulator-config) (at (+ (now) 5000) #(send persisted-state heartbeat) aapool))
+  pstate)</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn startup []
+  (reset! grabulator-config {:cb-conn (cb/bin-connection cb-mc-addr)
+                             :heartbeat true
+                             :sid (now)})
+  (let [cfg @grabulator-config
+        conn (:cb-conn cfg)
+        loadps (json/parse-string (or (cb/get conn statekey) &quot;{}&quot;) true)]
+    (add-watch persisted-state &quot;persistor&quot; persist-state)
+    (if (= loadps {})
+      (do (log/warn &quot;No state record found in Couchbase&quot; loadps)
+          (send persisted-state (fn [_] initial-state)))
+      (send persisted-state (fn [_] loadps)))
+      (send persisted-state heartbeat)))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn start-file-logging [filename]
+  (let [stdoutfn (get-in @log/config [:appenders :standard-out :fn])
+        fappender {:doc &quot;Prints to file&quot; :min-level nil :enabled? true :async? false
+                   :max-message-per-msecs nil
+                   :fn (fn [logdata] (spit filename (with-out-str (stdoutfn logdata)) :append true))}]
+    (log/set-config! [:appenders :file-appender] fappender)))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn shutdown []
+  (swap! grabulator-config dissoc :heartbeat)
+  (remove-watch persisted-state &quot;persistor&quot;)
+  (at-/stop-and-reset-pool! aapool))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#reddalyzr.loader" name="reddalyzr.loader"><h1 class="project-name">reddalyzr.loader</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(ns reddalyzr.loader
   (:require [clojurewerkz.spyglass.client :as spyc]
             [cheshire.core :as json]
-            reddit))</pre></td></tr><tr><td class="docs"><p>Load items from a reddit listing into a memcached or Couchbase server</p>
+            [reddalyzr.reddit :as reddit]))</pre></td></tr><tr><td class="docs"><p>Load items from a reddit listing into a memcached or Couchbase server</p>
 </td><td class="codes"><pre class="brush: clojure">(defn load-reddit
-  [conn subreddit]
-  (doseq [link (reddit/listing subreddit)]
-    (.set conn (:id link) 0 (json/encode link))))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn dev-conn [] (spyc/bin-connection &quot;127.0.0.1:12001&quot;))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#reddit" name="reddit"><h1 class="project-name">reddit</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(ns reddit
+  [conn subreddit &amp; [limit opts]]
+  (let [listing (reddit/listing subreddit opts)]
+    (doseq [link (if (nil? limit) listing (take limit listing))]
+      (.set conn (:id link) 0 (json/encode link)))))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn dev-conn [] (spyc/bin-connection &quot;127.0.0.1:12001&quot;))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#reddalyzr.reddit" name="reddalyzr.reddit"><h1 class="project-name">reddalyzr.reddit</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(ns reddalyzr.reddit
   (:require [clj-http.client :as http]
-            [clojure.walk :as walk]))</pre></td></tr><tr><td class="docs">
+            [taoensso.timbre :as log]
+            [clojure.walk :as walk]))</pre></td></tr><tr><td class="docs"><p>Reddit will always give us what the reddit docs refer to as a "thing".
+Types of things are documented <a href="https://github.com/reddit/reddit/wiki/thing">here</a></p>
+
+<p>We'll handle a couple types of things and transform them to be more easily used by
+all the clojure data processing tools. The "Listing" type for example, would be more
+useful if it was just a list of the items it contained. We use clojure metadata to attach
+the original metadata so we can still get to it later.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn- remap-kind [el kind]
+  (let [data (:data el)
+        m (merge (dissoc el :data) {:kind kind})]
+    (with-meta (merge data {:kind kind}) m)))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(defn- rdt-transform [el]
   (if (map? el)
     (condp = (:kind el)
@@ -3049,53 +3145,51 @@ net.brehaut.ClojureTools = (function (SH) {
                         items (:children data)
                         m (merge (dissoc el :data) (dissoc data :children) {:kind :listing})]
                     (with-meta items m))
-        ;Link
-        &quot;t3&quot; (let [data (:data el)
-                   m (merge (dissoc el :data) {:kind :link})]
-               (with-meta (merge data {:kind :link}) m))
-        ;Comment
-        &quot;t1&quot; (let [data (:data el)
-                   m (merge (dissoc el :data) {:kind :comment})]
-               (with-meta (merge data {:kind :comment}) m))
+        &quot;t3&quot; (remap-kind el :link)
+        &quot;t1&quot; (remap-kind el :comment)
+        &quot;t5&quot; (remap-kind el :subreddit)
         el)
     el))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(def reddit-base &quot;http://reddit.com&quot;)</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(def ^:private lrqtime (atom 0))</pre></td></tr><tr><td class="docs"><p>If <code>minwait</code> milliseconds have not passed since the timestamp in <code>timeatom</code>, sleep
-  for the difference. Always update timeatom with the current timestamp.</p>
+</td><td class="codes"><pre class="brush: clojure">(def ^:private lrqtime (agent 0))</pre></td></tr><tr><td class="docs"><p>If <code>minwait</code> milliseconds have not passed since the timestamp in <code>timeagent</code>, sleep
+  for the difference. Always update time agent with the current timestamp.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn- rlimit
-  [minwait timeatom]
-  (let [oldtime @timeatom
-        now (System/currentTimeMillis)
-        diff (- now oldtime)]
-    (when (&gt; minwait diff)
-      (Thread/sleep (- minwait diff)))
-    (reset! timeatom (System/currentTimeMillis))))</pre></td></tr><tr><td class="docs"><p>Use clj-http to make a request to a reddit resource. Will append .json to get JSON
+  [minwait timeagent]
+  (send-off timeagent (fn [lt]
+                        (let [now (System/currentTimeMillis)]
+                          (when (&lt; now (+ lt minwait))
+                            (Thread/sleep (- (+ lt minwait) now)))
+                          (System/currentTimeMillis))))
+  (await timeagent))</pre></td></tr><tr><td class="docs"><p>Use clj-http to make a request to a reddit resource. Will append .json to get JSON
   data, and rate-limit to one request per two seconds, per reddit API guidelines.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn request
   [&amp; [path opts]]
   (rlimit 2000 lrqtime) ;rate limit, 1 request per 2 seconds per reddit guidelines
+  (log/info &quot;Reddit request&quot; path opts)
   (:body (http/request (merge-with merge
                                    {:method :get
                                     ; descriptive user-agent per reddit guidelines
                                     :headers {&quot;User-Agent&quot; &quot;reddalyzr.clj by /u/apage43&quot;}
                                     :url (str reddit-base &quot;/&quot; path &quot;.json&quot;)
-                                    :as :json} opts))))</pre></td></tr><tr><td class="docs"><p>Request as with request, but also transform the data to something more clojure friendly,
+                                    :as :json} opts))))</pre></td></tr><tr><td class="docs"><p>Request as with request, but also transform the <code>thing</code>s to something more clojure friendly,
   attaching metadata as clojure metadata.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn request-xf
   [&amp; [path opts]]
-  (walk/postwalk rdt-transform (request path opts)))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn- listing-seq [path listing]
+  (walk/postwalk rdt-transform (request path opts)))</pre></td></tr><tr><td class="docs"><p>Given a listing and the path that was used to retrieve it, create a lazy sequence
+that will request the next page of items, if there is another page after the current one.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn- listing-seq [path listing opts]
   (let [m (meta listing)
         after (:after m)]
-    (if (not= (:kind m) :listing) (throw (ex-info {:error &quot;Not a listing&quot; :obj listing})))
+    (if (not= (:kind m) :listing) (throw (ex-info &quot;Not a listing&quot; {:obj listing})))
     (lazy-cat listing
               (if (nil? after) []
-                  (listing-seq path (request-xf path {:query-params {:after after :limit 100}}))))))</pre></td></tr><tr><td class="docs"><p>A lazy sequence of all the items that would be on the listing page at path.
+                  (listing-seq path (request-xf path (merge-with merge {:query-params {:after after :limit 100}} opts)) opts)))))</pre></td></tr><tr><td class="docs"><p>A lazy sequence of all the items that would be on the listing page at path.
   <code>(take 50 (listing "r/gaming"))</code></p>
 </td><td class="codes"><pre class="brush: clojure">(defn listing
-  [path]
-  (listing-seq path (request-xf path {:query-params {:limit 100}})))</pre></td></tr><tr><td class="docs">
+  [path &amp; [opts]]
+  (listing-seq path (request-xf path (merge-with merge {:query-params {:limit 100}} opts)) opts))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(defn thing [id &amp; [opts]]
+  &quot;Get a `thing` by its id&quot;
   (request-xf (str &quot;by_id/&quot; id) opts))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(defn hour-freqs [listing-path amount]
   (frequencies
@@ -3108,5 +3202,16 @@ net.brehaut.ClojureTools = (function (SH) {
 </td><td class="codes"><pre class="brush: clojure">(defn print-hour-freqs [hh]
   (let [mv (apply max (vals hh))]
     (doseq [[k v] (sort hh)]
-      (println (str (if (&gt; 10 k) &quot; &quot; ) k &quot; &quot; (apply str (repeat (* (/ 30 mv) v) &quot;*&quot;)))))))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr></table><div class="footer">Generated by <a href="https://github.com/fogus/marginalia">Marginalia</a>.&nbsp;&nbsp;Syntax highlighting provided by Alex Gorbatchev's <a href="http://alexgorbatchev.com/SyntaxHighlighter/">SyntaxHighlighter</a></div><script type="text/javascript">SyntaxHighlighter.defaults['gutter'] = false;
+      (println (str (if (&gt; 10 k) &quot; &quot; ) k &quot; &quot; (apply str (repeat (* (/ 30 mv) v) &quot;*&quot;)))))))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#startup" name="startup"><h1 class="project-name">startup</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(ns startup
+  (:require [taoensso.timbre :as log]
+            [reddalyzr.grabulator :as g])
+  (:require [clojure.tools.nrepl.server :as rs]))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(def server (atom nil))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn -main []
+  (let [replport (Integer/parseInt (get (System/getenv) &quot;REPL_PORT&quot; &quot;0&quot;))]
+    (log/set-level! :info)
+    (when (not= 0 replport)
+      (log/info &quot;Start REPL Server&quot; @(reset! server (rs/start-server :port replport))))
+    (g/startup)))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr></table><div class="footer">Generated by <a href="https://github.com/fogus/marginalia">Marginalia</a>.&nbsp;&nbsp;Syntax highlighting provided by Alex Gorbatchev's <a href="http://alexgorbatchev.com/SyntaxHighlighter/">SyntaxHighlighter</a></div><script type="text/javascript">SyntaxHighlighter.defaults['gutter'] = false;
        SyntaxHighlighter.all()</script></body></html>
