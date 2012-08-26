@@ -6,9 +6,10 @@ Some tools to pull data from reddit, and do stuff with it, like loading it into
     lein repl
 
 ```clojure
-user=> (require 'loader '[clojurewerkz.spyglass.client :as cli])
-user=> (def conn (cli/bin-connection "couchbaseserver:11211"))
-user=> (loader/load-reddit conn "r/all")
+startup=> (require '[reddalyzr.reddit :as reddit])
+; Get the top 50 subreddits
+startup=> (take 50 (map :display_name (reddit/listing "reddits/popular")))
+("pics" "funny" "politics" "gaming" "AskReddit" "worldnews" "videos" "IAmA" "todayilearned" "WTF" "aww" "atheism" "technology" "science" "Music" "movies" "bestof" "fffffffuuuuuuuuuuuu" "trees" "Minecraft" "gifs" "pokemon" "4chan" "circlejerk" "starcraft" "Guildwars2" "facepalm" "tf2" "news" "doctorwho" "TwoXChromosomes" "Jokes" "cats" "soccer" "woahdude" "batman" "Android" "space" "cars" "harrypotter" "Games" "nfl" "community" "guns" "zelda" "comics" "FoodPorn" "conspiracy" "Fallout" "Diablo")
 ```
 
 Check out the [source](http://apage43.github.com/reddalyzr/uberdoc.html).
