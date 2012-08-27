@@ -1,7 +1,8 @@
-(ns startup
+(ns reddalyzr.startup
   (:require [taoensso.timbre :as log]
-            [reddalyzr.grabulator :as g])
-  (:require [clojure.tools.nrepl.server :as rs]))
+            [reddalyzr.reddit :as reddit]
+            [reddalyzr.grabulator :as g]
+            [clojure.tools.nrepl.server :as rs]))
 
 (def server (atom nil))
 

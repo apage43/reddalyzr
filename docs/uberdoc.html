@@ -3029,7 +3029,13 @@ net.brehaut.ClojureTools = (function (SH) {
   };
 })(SyntaxHighlighter);
 </script><title>reddalyzr -- Marginalia</title></head><body><table><tr><td class="docs"><div class="header"><h1 class="project-name">reddalyzr</h1><h2 class="project-version">0.1.0-SNAPSHOT</h2><br /><p>reddit stuff for clojure</p>
-</div><div class="dependencies"><h3>dependencies</h3><table><tr><td class="dep-name">org.clojure/clojure</td><td class="dotted"><hr /></td><td class="dep-version">1.4.0</td></tr><tr><td class="dep-name">clojurewerkz/spyglass</td><td class="dotted"><hr /></td><td class="dep-version">1.1.0-SNAPSHOT</td></tr><tr><td class="dep-name">com.taoensso/timbre</td><td class="dotted"><hr /></td><td class="dep-version">0.8.0</td></tr><tr><td class="dep-name">org.clojure/tools.nrepl</td><td class="dotted"><hr /></td><td class="dep-version">0.2.0-beta9</td></tr><tr><td class="dep-name">cheshire</td><td class="dotted"><hr /></td><td class="dep-version">4.0.1</td></tr><tr><td class="dep-name">overtone/at-at</td><td class="dotted"><hr /></td><td class="dep-version">1.0.0</td></tr><tr><td class="dep-name">clj-http</td><td class="dotted"><hr /></td><td class="dep-version">0.5.3</td></tr></table></div></td><td class="codes" style="text-align: center; vertical-align: middle;color: #666;padding-right:20px"><br /><br /><br />(this space intentionally left almost blank)</td></tr><tr><td class="docs"><div class="toc"><a name="toc"><h3>namespaces</h3></a><ul><li><a href="#reddalyzr.grabulator">reddalyzr.grabulator</a></li><li><a href="#reddalyzr.loader">reddalyzr.loader</a></li><li><a href="#reddalyzr.reddit">reddalyzr.reddit</a></li><li><a href="#startup">startup</a></li></ul></div></td><td class="codes">&nbsp;</td></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#reddalyzr.grabulator" name="reddalyzr.grabulator"><h1 class="project-name">reddalyzr.grabulator</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs">
+</div><div class="dependencies"><h3>dependencies</h3><table><tr><td class="dep-name">org.clojure/clojure</td><td class="dotted"><hr /></td><td class="dep-version">1.4.0</td></tr><tr><td class="dep-name">clojurewerkz/spyglass</td><td class="dotted"><hr /></td><td class="dep-version">1.1.0-SNAPSHOT</td></tr><tr><td class="dep-name">com.taoensso/timbre</td><td class="dotted"><hr /></td><td class="dep-version">0.8.0</td></tr><tr><td class="dep-name">org.clojure/tools.nrepl</td><td class="dotted"><hr /></td><td class="dep-version">0.2.0-beta9</td></tr><tr><td class="dep-name">cheshire</td><td class="dotted"><hr /></td><td class="dep-version">4.0.1</td></tr><tr><td class="dep-name">overtone/at-at</td><td class="dotted"><hr /></td><td class="dep-version">1.0.0</td></tr><tr><td class="dep-name">clj-http</td><td class="dotted"><hr /></td><td class="dep-version">0.5.3</td></tr></table></div></td><td class="codes" style="text-align: center; vertical-align: middle;color: #666;padding-right:20px"><br /><br /><br />(this space intentionally left almost blank)</td></tr><tr><td class="docs"><div class="toc"><a name="toc"><h3>namespaces</h3></a><ul><li><a href="#reddalyzr.grabulator">reddalyzr.grabulator</a></li><li><a href="#reddalyzr.loader">reddalyzr.loader</a></li><li><a href="#reddalyzr.reddit">reddalyzr.reddit</a></li><li><a href="#reddalyzr.startup">reddalyzr.startup</a></li></ul></div></td><td class="codes">&nbsp;</td></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#reddalyzr.grabulator" name="reddalyzr.grabulator"><h1 class="project-name">reddalyzr.grabulator</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><h1>Reddit Scrape Scheduler</h1>
+
+<p>Simple task scheduling system to fire off jobs to scrape reddit
+listings and dump them into a Couchbase bucket.</p>
+
+<p>Stores its state in Couchbase so it will restart unfinished tasks
+if it dies.</p>
 </td><td class="codes"><pre class="brush: clojure">(ns reddalyzr.grabulator
   (:use [overtone.at-at :only (at now)])
   (:require [reddalyzr.reddit :as reddit]
@@ -3050,19 +3056,20 @@ net.brehaut.ClojureTools = (function (SH) {
 (def initial-state {:kind :configuration
                     :scheduled-tasks {}
                     ;; Grab 300 most recent items every minute
-                    :periodic {:all-new [60 &quot;grab&quot; [&quot;r/all/new/&quot; 300 {:query-params {:sort &quot;new&quot;}}]]}})</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn persist-state [_key _atom oldval newval]
+                    :periodic {:all-new [60 &quot;grab&quot; [&quot;r/all/new/&quot; 300 {:query-params {:sort &quot;new&quot;}}]]}})</pre></td></tr><tr><td class="docs"><p>Use a watch function on the persisted-state agent to store its
+value into the Couchbase DB every time it changes</p>
+</td><td class="codes"><pre class="brush: clojure">(defn- persist-state [_key _atom oldval newval]
   (when (not= oldval newval) (spy/set (:cb-conn @grabulator-config) statekey 0 (json/encode newval))))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn grab-task [path limit &amp; [opts]]
+</td><td class="codes"><pre class="brush: clojure">(defn- grab-task [path limit &amp; [opts]]
   (log/info &quot;Loading from path&quot; (str &quot;\ path &quot;\) &quot;limit&quot; limit opts)
   (loader/load-reddit (:cb-conn @grabulator-config) path limit opts))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(def tasks
   {:grab grab-task})</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(defn r-munge [path] (.replace path \/ \_))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn drop-task [pstate tk]
+</td><td class="codes"><pre class="brush: clojure">(defn- drop-task [pstate tk]
   (log/info &quot;Task&quot; tk &quot;completed&quot;)
   (update-in pstate [:scheduled-tasks] dissoc tk))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn prepare-to-fire [pstate]
+</td><td class="codes"><pre class="brush: clojure">(defn- prepare-to-fire [pstate]
   (let [mysid (:sid @grabulator-config)]
     (reduce (fn [s [tk t]]
               (if (not= mysid (:sid t))
@@ -3072,21 +3079,25 @@ net.brehaut.ClojureTools = (function (SH) {
                     (log/info &quot;Scheduled task&quot; tk &quot;to fire at&quot; (:time t))
                     (assoc-in s [:scheduled-tasks tk :sid] mysid))
                 s)) pstate (:scheduled-tasks pstate))))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn sched-task [pstate id [time type parm]]
+</td><td class="codes"><pre class="brush: clojure">(defn- sched-task [pstate id [time type parm]]
   (let [prex ((:scheduled-tasks pstate) id)
         ntime (+ (* 1000 time) (now))]
     (send persisted-state prepare-to-fire)
     (if (nil? prex)
       (assoc-in pstate [:scheduled-tasks id] {:time ntime :type type :parm parm})
-      pstate)))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn grab-path [rdt &amp; [limit opts]]
+      pstate)))</pre></td></tr><tr><td class="docs"><p>Immediately start scraping the reddit listing at <code>path</code>, dumping up to <code>limit</code> items into the DB</p>
+</td><td class="codes"><pre class="brush: clojure">(defn grab-path
+  [path &amp; [limit opts]]
   (send persisted-state sched-task
-        (keyword (str &quot;fetch-&quot; (r-munge rdt)))
-        [0 &quot;grab&quot; [(str rdt) (or limit 10000) opts]]))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn sched-periodic-grab [path period &amp; [limit opts]]
+        (keyword (str &quot;fetch-&quot; (r-munge path)))
+        [0 &quot;grab&quot; [(str path) (or limit 10000) opts]]))</pre></td></tr><tr><td class="docs"><p>Set up a periodic schedule to scrape the reddit lisitng at path, dumping <code>limit</code> items into the DB
+  every <code>period</code> seconds.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn sched-periodic-grab
+  [path period &amp; [limit opts]]
   (send persisted-state assoc-in [:periodic (keyword (str &quot;fetch-&quot; (r-munge path)))]
-        [period &quot;grab&quot; [path (or limit 500) opts]]))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn heartbeat [pstate]
+        [period &quot;grab&quot; [path (or limit 500) opts]]))</pre></td></tr><tr><td class="docs"><p>Periodically check our list of periodic tasks, and if they don't
+have an instance in the list of scheduled tasks, schedule them.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn- heartbeat [pstate]
   (log/debug &quot;Grabulator heartbeat.&quot;)
   ;; Reschedule repeating tasks
   (doseq [[tk tv] (:periodic pstate)] (send persisted-state sched-task tk tv))
@@ -3125,7 +3136,7 @@ net.brehaut.ClojureTools = (function (SH) {
   (let [listing (reddit/listing subreddit opts)]
     (doseq [link (if (nil? limit) listing (take limit listing))]
       (.set conn (:id link) 0 (json/encode link)))))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn dev-conn [] (spyc/bin-connection &quot;127.0.0.1:12001&quot;))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#reddalyzr.reddit" name="reddalyzr.reddit"><h1 class="project-name">reddalyzr.reddit</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn dev-conn [] (spyc/bin-connection &quot;127.0.0.1:12001&quot;))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#reddalyzr.reddit" name="reddalyzr.reddit"><h1 class="project-name">reddalyzr.reddit</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><h1>Reddit API Utilities</h1>
 </td><td class="codes"><pre class="brush: clojure">(ns reddalyzr.reddit
   (:require [clj-http.client :as http]
             [taoensso.timbre :as log]
@@ -3204,11 +3215,12 @@ that will request the next page of items, if there is another page after the cur
 </td><td class="codes"><pre class="brush: clojure">(defn print-hour-freqs [hh]
   (let [mv (apply max (vals hh))]
     (doseq [[k v] (sort hh)]
-      (println (str (if (&gt; 10 k) &quot; &quot; ) k &quot; &quot; (apply str (repeat (* (/ 30 mv) v) &quot;*&quot;)))))))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#startup" name="startup"><h1 class="project-name">startup</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(ns startup
+      (println (str (if (&gt; 10 k) &quot; &quot; ) k &quot; &quot; (apply str (repeat (* (/ 30 mv) v) &quot;*&quot;)))))))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#reddalyzr.startup" name="reddalyzr.startup"><h1 class="project-name">reddalyzr.startup</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(ns reddalyzr.startup
   (:require [taoensso.timbre :as log]
-            [reddalyzr.grabulator :as g])
-  (:require [clojure.tools.nrepl.server :as rs]))</pre></td></tr><tr><td class="docs">
+            [reddalyzr.reddit :as reddit]
+            [reddalyzr.grabulator :as g]
+            [clojure.tools.nrepl.server :as rs]))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(def server (atom nil))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(defn -main []
   (let [replport (Integer/parseInt (get (System/getenv) &quot;REPL_PORT&quot; &quot;0&quot;))]

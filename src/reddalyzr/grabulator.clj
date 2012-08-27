@@ -1,3 +1,9 @@
+;; # Reddit Scrape Scheduler
+;; Simple task scheduling system to fire off jobs to scrape reddit
+;; listings and dump them into a Couchbase bucket.
+;;
+;; Stores its state in Couchbase so it will restart unfinished tasks
+;; if it dies.
 (ns reddalyzr.grabulator
   (:use [overtone.at-at :only (at now)])
   (:require [reddalyzr.reddit :as reddit]
@@ -24,10 +30,12 @@
                     ;; Grab 300 most recent items every minute
                     :periodic {:all-new [60 "grab" ["r/all/new/" 300 {:query-params {:sort "new"}}]]}})
 
-(defn persist-state [_key _atom oldval newval]
+;; Use a watch function on the persisted-state agent to store its
+;; value into the Couchbase DB every time it changes
+(defn- persist-state [_key _atom oldval newval]
   (when (not= oldval newval) (spy/set (:cb-conn @grabulator-config) statekey 0 (json/encode newval))))
 
-(defn grab-task [path limit & [opts]]
+(defn- grab-task [path limit & [opts]]
   (log/info "Loading from path" (str "\"" path "\"") "limit" limit opts)
   (loader/load-reddit (:cb-conn @grabulator-config) path limit opts))
 
@@ -36,11 +44,11 @@
 
 (defn r-munge [path] (.replace path \/ \_))
 
-(defn drop-task [pstate tk]
+(defn- drop-task [pstate tk]
   (log/info "Task" tk "completed")
   (update-in pstate [:scheduled-tasks] dissoc tk))
 
-(defn prepare-to-fire [pstate]
+(defn- prepare-to-fire [pstate]
   (let [mysid (:sid @grabulator-config)]
     (reduce (fn [s [tk t]]
               (if (not= mysid (:sid t))
@@ -51,7 +59,7 @@
                     (assoc-in s [:scheduled-tasks tk :sid] mysid))
                 s)) pstate (:scheduled-tasks pstate))))
 
-(defn sched-task [pstate id [time type parm]]
+(defn- sched-task [pstate id [time type parm]]
   (let [prex ((:scheduled-tasks pstate) id)
         ntime (+ (* 1000 time) (now))]
     (send persisted-state prepare-to-fire)
@@ -59,16 +67,23 @@
       (assoc-in pstate [:scheduled-tasks id] {:time ntime :type type :parm parm})
       pstate)))
 
-(defn grab-path [rdt & [limit opts]]
+(defn grab-path
+  "Immediately start scraping the reddit listing at `path`, dumping up to `limit` items into the DB"
+  [path & [limit opts]]
   (send persisted-state sched-task
-        (keyword (str "fetch-" (r-munge rdt)))
-        [0 "grab" [(str rdt) (or limit 10000) opts]]))
+        (keyword (str "fetch-" (r-munge path)))
+        [0 "grab" [(str path) (or limit 10000) opts]]))
 
-(defn sched-periodic-grab [path period & [limit opts]]
+(defn sched-periodic-grab
+  "Set up a periodic schedule to scrape the reddit lisitng at path, dumping `limit` items into the DB
+  every `period` seconds."
+  [path period & [limit opts]]
   (send persisted-state assoc-in [:periodic (keyword (str "fetch-" (r-munge path)))]
         [period "grab" [path (or limit 500) opts]]))
 
-(defn heartbeat [pstate]
+;; Periodically check our list of periodic tasks, and if they don't
+;; have an instance in the list of scheduled tasks, schedule them.
+(defn- heartbeat [pstate]
   (log/debug "Grabulator heartbeat.")
   ;; Reschedule repeating tasks
   (doseq [[tk tv] (:periodic pstate)] (send persisted-state sched-task tk tv))

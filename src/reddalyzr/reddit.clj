@@ -1,3 +1,4 @@
+;; # Reddit API Utilities
 (ns reddalyzr.reddit
   (:require [clj-http.client :as http]
             [taoensso.timbre :as log]

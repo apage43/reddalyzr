@@ -3,7 +3,7 @@
   :url "http://github.com/apage43/reddalyzr"
   :license {:name "WTFPL"
             :url "http://sam.zoy.org/wtfpl/"}
-  :main ^{:skip-aot true} startup
+  :main ^{:skip-aot true} reddalyzr.startup
   :dependencies [[org.clojure/clojure "1.4.0"]
                  [clojurewerkz/spyglass "1.1.0-SNAPSHOT"]
                  [com.taoensso/timbre "0.8.0"]
