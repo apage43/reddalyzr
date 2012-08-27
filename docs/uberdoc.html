@@ -3029,7 +3029,7 @@ net.brehaut.ClojureTools = (function (SH) {
   };
 })(SyntaxHighlighter);
 </script><title>reddalyzr -- Marginalia</title></head><body><table><tr><td class="docs"><div class="header"><h1 class="project-name">reddalyzr</h1><h2 class="project-version">0.1.0-SNAPSHOT</h2><br /><p>reddit stuff for clojure</p>
-</div><div class="dependencies"><h3>dependencies</h3><table><tr><td class="dep-name">org.clojure/clojure</td><td class="dotted"><hr /></td><td class="dep-version">1.4.0</td></tr><tr><td class="dep-name">clojurewerkz/spyglass</td><td class="dotted"><hr /></td><td class="dep-version">1.0.0</td></tr><tr><td class="dep-name">com.taoensso/timbre</td><td class="dotted"><hr /></td><td class="dep-version">0.8.0</td></tr><tr><td class="dep-name">org.clojure/tools.nrepl</td><td class="dotted"><hr /></td><td class="dep-version">0.2.0-beta9</td></tr><tr><td class="dep-name">cheshire</td><td class="dotted"><hr /></td><td class="dep-version">4.0.1</td></tr><tr><td class="dep-name">overtone/at-at</td><td class="dotted"><hr /></td><td class="dep-version">1.0.0</td></tr><tr><td class="dep-name">clj-http</td><td class="dotted"><hr /></td><td class="dep-version">0.5.3</td></tr></table></div></td><td class="codes" style="text-align: center; vertical-align: middle;color: #666;padding-right:20px"><br /><br /><br />(this space intentionally left almost blank)</td></tr><tr><td class="docs"><div class="toc"><a name="toc"><h3>namespaces</h3></a><ul><li><a href="#reddalyzr.grabulator">reddalyzr.grabulator</a></li><li><a href="#reddalyzr.loader">reddalyzr.loader</a></li><li><a href="#reddalyzr.reddit">reddalyzr.reddit</a></li><li><a href="#startup">startup</a></li></ul></div></td><td class="codes">&nbsp;</td></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#reddalyzr.grabulator" name="reddalyzr.grabulator"><h1 class="project-name">reddalyzr.grabulator</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs">
+</div><div class="dependencies"><h3>dependencies</h3><table><tr><td class="dep-name">org.clojure/clojure</td><td class="dotted"><hr /></td><td class="dep-version">1.4.0</td></tr><tr><td class="dep-name">clojurewerkz/spyglass</td><td class="dotted"><hr /></td><td class="dep-version">1.1.0-SNAPSHOT</td></tr><tr><td class="dep-name">com.taoensso/timbre</td><td class="dotted"><hr /></td><td class="dep-version">0.8.0</td></tr><tr><td class="dep-name">org.clojure/tools.nrepl</td><td class="dotted"><hr /></td><td class="dep-version">0.2.0-beta9</td></tr><tr><td class="dep-name">cheshire</td><td class="dotted"><hr /></td><td class="dep-version">4.0.1</td></tr><tr><td class="dep-name">overtone/at-at</td><td class="dotted"><hr /></td><td class="dep-version">1.0.0</td></tr><tr><td class="dep-name">clj-http</td><td class="dotted"><hr /></td><td class="dep-version">0.5.3</td></tr></table></div></td><td class="codes" style="text-align: center; vertical-align: middle;color: #666;padding-right:20px"><br /><br /><br />(this space intentionally left almost blank)</td></tr><tr><td class="docs"><div class="toc"><a name="toc"><h3>namespaces</h3></a><ul><li><a href="#reddalyzr.grabulator">reddalyzr.grabulator</a></li><li><a href="#reddalyzr.loader">reddalyzr.loader</a></li><li><a href="#reddalyzr.reddit">reddalyzr.reddit</a></li><li><a href="#startup">startup</a></li></ul></div></td><td class="codes">&nbsp;</td></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#reddalyzr.grabulator" name="reddalyzr.grabulator"><h1 class="project-name">reddalyzr.grabulator</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(ns reddalyzr.grabulator
   (:use [overtone.at-at :only (at now)])
   (:require [reddalyzr.reddit :as reddit]
@@ -3037,12 +3037,14 @@ net.brehaut.ClojureTools = (function (SH) {
             [overtone.at-at :as at-]
             [taoensso.timbre :as log]
             [cheshire.core :as json]
-            [clojurewerkz.spyglass.client :as cb]
+            [clojurewerkz.spyglass.couchbase :as cb]
+            [clojurewerkz.spyglass.client :as spy]
             [clj-http.client :as http]))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(def aapool (at-/mk-pool))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(def cb-rest-addr (get (System/getenv) &quot;COUCHBASE_REST&quot; &quot;http://127.0.0.1:9500/default/_design/reddit/&quot;))
-(def cb-mc-addr (get (System/getenv) &quot;COUCHBASE_MEMCACHED&quot; &quot;127.0.0.1:12001&quot;))
-(def statekey &quot;reddalyzr_grabulator_state&quot;)</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(def cb-rest-addr (get (System/getenv) &quot;COUCHBASE_URI&quot; &quot;http://127.0.0.1:9000/pools/&quot;))
+(def cb-bucket (get (System/getenv) &quot;COUCHBASE_BUCKET&quot; &quot;default&quot;))
+(def cb-bucket-password (get (System/getenv) &quot;COUCHBASE_BUCKET_PASSWORD&quot; ))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(def statekey &quot;reddalyzr_grabulator_state&quot;)</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(def grabulator-config (atom {}))
 (def persisted-state (agent {}))
 (def initial-state {:kind :configuration
@@ -3050,7 +3052,7 @@ net.brehaut.ClojureTools = (function (SH) {
                     ;; Grab 300 most recent items every minute
                     :periodic {:all-new [60 &quot;grab&quot; [&quot;r/all/new/&quot; 300 {:query-params {:sort &quot;new&quot;}}]]}})</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(defn persist-state [_key _atom oldval newval]
-  (when (not= oldval newval) (cb/set (:cb-conn @grabulator-config) statekey 0 (json/encode newval))))</pre></td></tr><tr><td class="docs">
+  (when (not= oldval newval) (spy/set (:cb-conn @grabulator-config) statekey 0 (json/encode newval))))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(defn grab-task [path limit &amp; [opts]]
   (log/info &quot;Loading from path&quot; (str &quot;\ path &quot;\) &quot;limit&quot; limit opts)
   (loader/load-reddit (:cb-conn @grabulator-config) path limit opts))</pre></td></tr><tr><td class="docs">
@@ -3092,12 +3094,12 @@ net.brehaut.ClojureTools = (function (SH) {
   (when (:heartbeat @grabulator-config) (at (+ (now) 5000) #(send persisted-state heartbeat) aapool))
   pstate)</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(defn startup []
-  (reset! grabulator-config {:cb-conn (cb/bin-connection cb-mc-addr)
+  (reset! grabulator-config {:cb-conn (cb/connection [cb-rest-addr] cb-bucket cb-bucket-password)
                              :heartbeat true
                              :sid (now)})
   (let [cfg @grabulator-config
         conn (:cb-conn cfg)
-        loadps (json/parse-string (or (cb/get conn statekey) &quot;{}&quot;) true)]
+        loadps (json/parse-string (or (spy/get conn statekey) &quot;{}&quot;) true)]
     (add-watch persisted-state &quot;persistor&quot; persist-state)
     (if (= loadps {})
       (do (log/warn &quot;No state record found in Couchbase&quot; loadps)

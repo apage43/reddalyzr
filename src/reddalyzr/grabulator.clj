@@ -5,13 +5,16 @@
             [overtone.at-at :as at-]
             [taoensso.timbre :as log]
             [cheshire.core :as json]
-            [clojurewerkz.spyglass.client :as cb]
+            [clojurewerkz.spyglass.couchbase :as cb]
+            [clojurewerkz.spyglass.client :as spy]
             [clj-http.client :as http]))
 
 (def aapool (at-/mk-pool))
 
-(def cb-rest-addr (get (System/getenv) "COUCHBASE_REST" "http://127.0.0.1:9500/default/_design/reddit/"))
-(def cb-mc-addr (get (System/getenv) "COUCHBASE_MEMCACHED" "127.0.0.1:12001"))
+(def cb-rest-addr (get (System/getenv) "COUCHBASE_URI" "http://127.0.0.1:9000/pools/"))
+(def cb-bucket (get (System/getenv) "COUCHBASE_BUCKET" "default"))
+(def cb-bucket-password (get (System/getenv) "COUCHBASE_BUCKET_PASSWORD" ""))
+
 (def statekey "reddalyzr_grabulator_state")
 
 (def grabulator-config (atom {}))
@@ -22,7 +25,7 @@
                     :periodic {:all-new [60 "grab" ["r/all/new/" 300 {:query-params {:sort "new"}}]]}})
 
 (defn persist-state [_key _atom oldval newval]
-  (when (not= oldval newval) (cb/set (:cb-conn @grabulator-config) statekey 0 (json/encode newval))))
+  (when (not= oldval newval) (spy/set (:cb-conn @grabulator-config) statekey 0 (json/encode newval))))
 
 (defn grab-task [path limit & [opts]]
   (log/info "Loading from path" (str "\"" path "\"") "limit" limit opts)
@@ -74,12 +77,12 @@
   pstate)
 
 (defn startup []
-  (reset! grabulator-config {:cb-conn (cb/bin-connection cb-mc-addr)
+  (reset! grabulator-config {:cb-conn (cb/connection [cb-rest-addr] cb-bucket cb-bucket-password)
                              :heartbeat true
                              :sid (now)})
   (let [cfg @grabulator-config
         conn (:cb-conn cfg)
-        loadps (json/parse-string (or (cb/get conn statekey) "{}") true)]
+        loadps (json/parse-string (or (spy/get conn statekey) "{}") true)]
     (add-watch persisted-state "persistor" persist-state)
     (if (= loadps {})
       (do (log/warn "No state record found in Couchbase" loadps)
@@ -98,3 +101,4 @@
   (swap! grabulator-config dissoc :heartbeat)
   (remove-watch persisted-state "persistor")
   (at-/stop-and-reset-pool! aapool))
+
