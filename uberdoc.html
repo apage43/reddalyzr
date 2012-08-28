@@ -3147,13 +3147,13 @@ Types of things are documented <a href="https://github.com/reddit/reddit/wiki/th
 all the clojure data processing tools. The "Listing" type for example, would be more
 useful if it was just a list of the items it contained. We use clojure metadata to attach
 the original metadata so we can still get to it later.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn- remap-kind [el kind]
-  (let [data (:data el)
-        m (merge (dissoc el :data) {:kind kind})]
-    (with-meta (merge data {:kind kind}) m)))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn- rdt-transform [el]
-  (if (map? el)
-    (condp = (:kind el)
+</td><td class="codes"><pre class="brush: clojure">(letfn [(remap-kind [el kind]
+          (let [data (:data el)
+                m (merge (dissoc el :data) {:kind kind})]
+            (with-meta (merge data {:kind kind}) m)))]
+  (defn- rdt-transform [el]
+    (if (map? el)
+      (condp = (:kind el)
         &quot;Listing&quot; (let [data (:data el)
                         items (:children data)
                         m (merge (dissoc el :data) (dissoc data :children) {:kind :listing})]
@@ -3162,7 +3162,7 @@ the original metadata so we can still get to it later.</p>
         &quot;t1&quot; (remap-kind el :comment)
         &quot;t5&quot; (remap-kind el :subreddit)
         el)
-    el))</pre></td></tr><tr><td class="docs">
+      el)))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(def reddit-base &quot;http://reddit.com&quot;)</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(def ^:private lrqtime (agent 0))</pre></td></tr><tr><td class="docs"><p>If <code>minwait</code> milliseconds have not passed since the timestamp in <code>timeagent</code>, sleep
   for the difference. Always update time agent with the current timestamp.</p>
@@ -3200,9 +3200,9 @@ that will request the next page of items, if there is another page after the cur
   <code>(take 50 (listing "r/gaming"))</code></p>
 </td><td class="codes"><pre class="brush: clojure">(defn listing
   [path &amp; [opts]]
-  (listing-seq path (request-xf path (merge-with merge {:query-params {:limit 100}} opts)) opts))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn thing [id &amp; [opts]]
-  &quot;Get a `thing` by its id&quot;
+  (listing-seq path (request-xf path (merge-with merge {:query-params {:limit 100}} opts)) opts))</pre></td></tr><tr><td class="docs"><p>Get a <code>thing</code> by its id</p>
+</td><td class="codes"><pre class="brush: clojure">(defn thing
+  [id &amp; [opts]]
   (request-xf (str &quot;by_id/&quot; id) opts))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(defn hour-freqs [listing-path amount]
   (frequencies
