@@ -11,14 +11,14 @@
 ;; all the clojure data processing tools. The "Listing" type for example, would be more
 ;; useful if it was just a list of the items it contained. We use clojure metadata to attach
 ;; the original metadata so we can still get to it later.
-(defn- remap-kind [el kind]
-  (let [data (:data el)
-        m (merge (dissoc el :data) {:kind kind})]
-    (with-meta (merge data {:kind kind}) m)))
-
-(defn- rdt-transform [el]
-  (if (map? el)
-    (condp = (:kind el)
+(letfn [(remap-kind [el kind]
+          (let [data (:data el)
+                m (merge (dissoc el :data) {:kind kind})]
+            (with-meta (merge data {:kind kind}) m)))]
+  
+  (defn- rdt-transform [el]
+    (if (map? el)
+      (condp = (:kind el)
         "Listing" (let [data (:data el)
                         items (:children data)
                         m (merge (dissoc el :data) (dissoc data :children) {:kind :listing})]
@@ -27,7 +27,7 @@
         "t1" (remap-kind el :comment)
         "t5" (remap-kind el :subreddit)
         el)
-    el))
+      el)))
 
 (def reddit-base "http://reddit.com")
 
@@ -79,8 +79,9 @@
   [path & [opts]]
   (listing-seq path (request-xf path (merge-with merge {:query-params {:limit 100}} opts)) opts))
 
-(defn thing [id & [opts]]
+(defn thing
   "Get a `thing` by its id"
+  [id & [opts]]
   (request-xf (str "by_id/" id) opts))
 
 (defn hour-freqs [listing-path amount]
