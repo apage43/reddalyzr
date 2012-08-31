@@ -10,4 +10,5 @@
                  [org.clojure/tools.nrepl "0.2.0-beta9"]
                  [cheshire "4.0.1"]
                  [overtone/at-at "1.0.0"]
+                 [cr8/grab-bag "0.1.0-SNAPSHOT"]
                  [clj-http "0.5.3"]])

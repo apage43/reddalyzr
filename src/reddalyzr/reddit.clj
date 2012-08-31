@@ -1,6 +1,7 @@
 ;; # Reddit API Utilities
 (ns reddalyzr.reddit
   (:require [clj-http.client :as http]
+            [grab-bag.time :as tg]
             [taoensso.timbre :as log]
             [clojure.walk :as walk]))
 
@@ -15,7 +16,6 @@
           (let [data (:data el)
                 m (merge (dissoc el :data) {:kind kind})]
             (with-meta (merge data {:kind kind}) m)))]
-  
   (defn- rdt-transform [el]
     (if (map? el)
       (condp = (:kind el)
@@ -23,6 +23,10 @@
                         items (:children data)
                         m (merge (dissoc el :data) (dissoc data :children) {:kind :listing})]
                     (with-meta items m))
+        "more" (let [data (:data el)
+                     items (:children data)
+                     m (merge (dissoc el :data) (dissoc data :children) {:kind :more})]
+                 (with-meta items m))
         "t3" (remap-kind el :link)
         "t1" (remap-kind el :comment)
         "t5" (remap-kind el :subreddit)
@@ -31,31 +35,20 @@
 
 (def reddit-base "http://reddit.com")
 
-(def ^:private lrqtime (agent 0))
-
-(defn- rlimit
-  "If `minwait` milliseconds have not passed since the timestamp in `timeagent`, sleep
-  for the difference. Always update time agent with the current timestamp."
-  [minwait timeagent]
-  (send-off timeagent (fn [lt]
-                        (let [now (System/currentTimeMillis)]
-                          (when (< now (+ lt minwait))
-                            (Thread/sleep (- (+ lt minwait) now)))
-                          (System/currentTimeMillis))))
-  (await timeagent))
-
-(defn request
-  "Use clj-http to make a request to a reddit resource. Will append .json to get JSON
-  data, and rate-limit to one request per two seconds, per reddit API guidelines."
+(defn- raw-request
   [& [path opts]]
-  (rlimit 2000 lrqtime) ;rate limit, 1 request per 2 seconds per reddit guidelines
-  (log/info "Reddit request" path opts)
   (:body (http/request (merge-with merge
                                    {:method :get
                                     ; descriptive user-agent per reddit guidelines
                                     :headers {"User-Agent" "reddalyzr.clj by /u/apage43"}
                                     :url (str reddit-base "/" path ".json")
                                     :as :json} opts))))
+
+(let [rrmeta (meta #'raw-request)]
+  (def ^{:arglists (:arglists rrmeta) :doc
+ "Use clj-http to make a request to a reddit resource. Will append .json to get JSON
+  data, and rate-limit to one request per two seconds, per reddit API guidelines."}
+    request (tg/rate-limited 2000 raw-request)))
 
 (defn request-xf
   "Request as with request, but also transform the `thing`s to something more clojure friendly,
