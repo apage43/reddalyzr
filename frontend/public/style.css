@@ -104,9 +104,13 @@ a:hover {
     #rname {
         display: block;
         top: 2.7em;
+        margin-right: 100px;
     }
     #content {
         margin: 0 auto;
+    }
+    #tzctl {
+        margin-right: 100px;
     }
 }
 
