@@ -41,7 +41,10 @@
 
 (defn- grab-task [tk path limit & [opts]]
   (log/info "Loading from path" (str "\"" path "\"") "limit" limit opts)
-  (loader/load-reddit (:cb-conn @grabulator-config) path limit opts)
+  (try
+    (loader/load-reddit (:cb-conn @grabulator-config) path limit opts)
+    (catch Exception e
+      (log/info e "caught fetching" path)))
   (send persisted-state drop-task tk))
 
 (defn serialized
