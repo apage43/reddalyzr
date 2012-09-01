@@ -37,6 +37,7 @@
 
 (defn- raw-request
   [& [path opts]]
+  (log/info "Reddit request" path opts)
   (:body (http/request (merge-with merge
                                    {:method :get
                                     ; descriptive user-agent per reddit guidelines

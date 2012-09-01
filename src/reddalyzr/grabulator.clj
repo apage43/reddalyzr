@@ -35,26 +35,35 @@
 (defn- persist-state [_key _atom oldval newval]
   (when (not= oldval newval) (spy/set (:cb-conn @grabulator-config) statekey 0 (json/encode newval))))
 
-(defn- grab-task [path limit & [opts]]
-  (log/info "Loading from path" (str "\"" path "\"") "limit" limit opts)
-  (loader/load-reddit (:cb-conn @grabulator-config) path limit opts))
-
-(def tasks
-  {:grab grab-task})
-
-(defn r-munge [path] (.replace path \/ \_))
-
 (defn- drop-task [pstate tk]
   (log/info "Task" tk "completed")
   (update-in pstate [:scheduled-tasks] dissoc tk))
+
+(defn- grab-task [tk path limit & [opts]]
+  (log/info "Loading from path" (str "\"" path "\"") "limit" limit opts)
+  (loader/load-reddit (:cb-conn @grabulator-config) path limit opts)
+  (send persisted-state drop-task tk))
+
+(defn serialized
+  "Serialize calls to task `tfn`, running them on an agent via `send-off`."
+  [tfn]
+  (let [a (agent nil)]
+    (fn [& args]
+      (send-off a (fn [_av]
+                    (apply tfn args) nil)))))
+
+(def tasks
+  {:grab (serialized grab-task)})
+
+(defn r-munge [path] (.replace path \/ \_))
 
 (defn- prepare-to-fire [pstate]
   (let [mysid (:sid @grabulator-config)]
     (reduce (fn [s [tk t]]
               (if (not= mysid (:sid t))
-                (do (at (:time t) #(do (apply (tasks (keyword (:type t))) (:parm t))
-                                       (send persisted-state drop-task tk))
-                        aapool)
+                (do (at (:time t) (fn [] (let [tfn (tasks (keyword (:type t)))
+                                              parms (:parm t)]
+                                          (apply tfn (concat [tk] parms)))) aapool)
                     (log/info "Scheduled task" tk "to fire at" (:time t))
                     (assoc-in s [:scheduled-tasks tk :sid] mysid))
                 s)) pstate (:scheduled-tasks pstate))))
