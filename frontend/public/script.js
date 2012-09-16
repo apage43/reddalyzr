@@ -69,6 +69,7 @@ function show_freqs(row, dur) {
         row = { value: { freqs: [], score: [] }}
     }
 
+    // Show total number of data points
     $("#dpnbr").html(_.reduce(row.value.freqs,
                      function(acc, n) { return acc + n}, 0));
 
