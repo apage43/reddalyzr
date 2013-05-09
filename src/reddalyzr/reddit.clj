@@ -1,9 +1,24 @@
 ;; # Reddit API Utilities
 (ns reddalyzr.reddit
   (:require [clj-http.client :as http]
-            [grab-bag.time :as tg]
             [taoensso.timbre :as log]
             [clojure.walk :as walk]))
+
+(defn now-ms [] (System/currentTimeMillis))
+
+(defn rate-limited
+  "Wrap `f' to create a fn that will call f at most once every minwait
+  milliseconds."
+  [minwait f]
+  (let [timeatom (atom 0)]
+    (fn [& args]
+      (locking timeatom
+                (let [at-least (+ @timeatom minwait)
+                      now (now-ms)]
+                  (when (< now at-least)
+                    (Thread/sleep (- at-least now)))
+                  (reset! timeatom (now-ms))))
+      (apply f args))))
 
 ;; Reddit will always give us what the reddit docs refer to as a "thing".
 ;; Types of things are documented [here](https://github.com/reddit/reddit/wiki/thing)
@@ -49,7 +64,7 @@
   (def ^{:arglists (:arglists rrmeta) :doc
  "Use clj-http to make a request to a reddit resource. Will append .json to get JSON
   data, and rate-limit to one request per two seconds, per reddit API guidelines."}
-    request (tg/rate-limited 2000 raw-request)))
+    request (rate-limited 2000 raw-request)))
 
 (defn request-xf
   "Request as with request, but also transform the `thing`s to something more clojure friendly,

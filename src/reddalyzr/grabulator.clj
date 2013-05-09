@@ -11,14 +11,13 @@
             [overtone.at-at :as at-]
             [taoensso.timbre :as log]
             [cheshire.core :as json]
-            [clojurewerkz.spyglass.couchbase :as cb]
-            [clojurewerkz.spyglass.client :as spy]
+            [cbdrawer.client :as cb]
             [clj-http.client :as http]))
 
 (def aapool (at-/mk-pool))
 
-(def cb-rest-addr (get (System/getenv) "COUCHBASE_URI" "http://127.0.0.1:9000/pools/"))
-(def cb-bucket (get (System/getenv) "COUCHBASE_BUCKET" "default"))
+(def cb-rest-addr (get (System/getenv) "COUCHBASE_URI" "http://mango:8091/"))
+(def cb-bucket (get (System/getenv) "COUCHBASE_BUCKET" "reddalyzr"))
 (def cb-bucket-password (get (System/getenv) "COUCHBASE_BUCKET_PASSWORD" ""))
 
 (def statekey "reddalyzr_grabulator_state")
@@ -33,7 +32,8 @@
 ;; Use a watch function on the persisted-state agent to store its
 ;; value into the Couchbase DB every time it changes
 (defn- persist-state [_key _atom oldval newval]
-  (when (not= oldval newval) (spy/set (:cb-conn @grabulator-config) statekey 0 (json/encode newval))))
+  (when (not= oldval newval)
+    (cb/force! (:cb-conn @grabulator-config) statekey newval)))
 
 (defn- drop-task [pstate tk]
   (log/info "Task" tk "completed")
@@ -47,6 +47,17 @@
       (log/info e "caught fetching" path)))
   (send persisted-state drop-task tk))
 
+(defn snap-task
+  "Grab view URL, sort results, store result in destkey if successful."
+  [tk url destkey limit]
+  (try
+    (let [body (:body (http/get url {:as :json}))
+          body (update-in body [:rows] #(take limit (reverse (sort-by :value %))))]
+      (cb/force! (:cb-conn @grabulator-config) destkey body))
+    (catch Exception e (log/error "Error snapshotting " [url destkey] e))
+    (finally
+      (send persisted-state drop-task tk))))
+
 (defn serialized
   "Serialize calls to task `tfn`, running them on an agent via `send-off`."
   [tfn]
@@ -56,7 +67,8 @@
                     (apply tfn args) nil)))))
 
 (def tasks
-  {:grab (serialized grab-task)})
+  {:grab (serialized grab-task)
+   :snasphot snap-task})
 
 (defn r-munge [path] (.replace path \/ \_))
 
@@ -66,7 +78,8 @@
               (if (not= mysid (:sid t))
                 (do (at (:time t) (fn [] (let [tfn (tasks (keyword (:type t)))
                                               parms (:parm t)]
-                                          (apply tfn (concat [tk] parms)))) aapool)
+                                          (apply tfn (concat [tk] parms)))) aapool
+                                          :desc (str "Task " (pr-str tk)))
                     (log/info "Scheduled task" tk "to fire at" (:time t))
                     (assoc-in s [:scheduled-tasks tk :sid] mysid))
                 s)) pstate (:scheduled-tasks pstate))))
@@ -100,16 +113,16 @@
   ;; Reschedule repeating tasks
   (doseq [[tk tv] (:periodic pstate)] (send persisted-state sched-task tk tv))
   ;; Schedule next heartbeat
-  (when (:heartbeat @grabulator-config) (at (+ (now) 5000) #(send persisted-state heartbeat) aapool))
+  (when (:heartbeat @grabulator-config) (at (+ (now) 5000) #(send persisted-state heartbeat) aapool :desc "Heartbeat"))
   pstate)
 
 (defn startup []
-  (reset! grabulator-config {:cb-conn (cb/connection [cb-rest-addr] cb-bucket cb-bucket-password)
+  (reset! grabulator-config {:cb-conn (cb/client cb-bucket cb-bucket-password cb-rest-addr)
                              :heartbeat true
                              :sid (now)})
   (let [cfg @grabulator-config
         conn (:cb-conn cfg)
-        loadps (json/parse-string (or (spy/get conn statekey) "{}") true)]
+        loadps (or (cb/get conn statekey) {})]
     (add-watch persisted-state "persistor" persist-state)
     (if (= loadps {})
       (do (log/warn "No state record found in Couchbase" loadps)

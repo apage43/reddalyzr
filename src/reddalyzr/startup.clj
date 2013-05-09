@@ -1,4 +1,5 @@
 (ns reddalyzr.startup
+  (:gen-class)
   (:require [taoensso.timbre :as log]
             [reddalyzr.reddit :as reddit]
             [reddalyzr.grabulator :as g]
